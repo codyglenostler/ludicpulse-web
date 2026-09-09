@@ -25,7 +25,9 @@ test('privacy describes visible charging places, shared memory reuse and provena
   assert.match(privacy, /does not request your phone’s current GPS location/);
   assert.match(privacy, /short-lived in-memory cache/);
   assert.match(privacy, /does not write those results into charging history/);
-  assert.match(privacy, /Effective September 8, 2026/);
+  assert.match(privacy, /Effective September 9, 2026/);
+  assert.match(privacy, /up to eight enabled schedule locations/);
+  assert.match(privacy, /Connectivity loss alone is not treated as sleep/);
 });
 
 function wordCount(html) {
