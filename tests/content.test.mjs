@@ -13,6 +13,15 @@ function mainMarkup(html) {
   return html.match(/<main\b[\s\S]*?<\/main>/)?.[0] ?? '';
 }
 
+test('privacy describes the one-time factory-paint cache and its deletion boundary',()=>{
+  const privacy=read('privacy/index.html');
+  assert.match(privacy,/Vehicle appearance/);
+  assert.match(privacy,/paint code, paint name and lookup time/);
+  assert.match(privacy,/do not retain the full options response/);
+  assert.match(privacy,/reused without recurring polling/);
+  assert.match(privacy,/Account deletion removes your cloud factory-paint record/);
+});
+
 test('privacy describes visible charging places, shared memory reuse and provenance boundaries', () => {
   const privacy = read('privacy/index.html');
   assert.match(privacy, /Charging locations/);
