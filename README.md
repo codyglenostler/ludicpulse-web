@@ -1,67 +1,75 @@
-# Ludic Pulse — Web
+# Ludic Pulse Web
 
-The public website and web apps for **Ludic Pulse**, an iPhone app for Tesla
-owners that brings vehicle status, drives, charging, efficiency, Live
-Activities, and private Shared ETA into one focused app.
+The public web surface for Ludic Pulse, a Tesla companion app: product pages, private-beta signup, support, Tesla account-linking callback, and a Shared ETA recipient experience that opens in a browser without an app install.
 
-**Live:** [ludicpulse.com](https://ludicpulse.com)
+**[Visit Ludic Pulse](https://ludicpulse.com)** · **[Shared ETA engineering case study](docs/SHARED_ETA_CASE_STUDY.md)**
 
-<!-- Add a screenshot of the marketing homepage or the Shared ETA map view here. -->
+![Ludic Pulse public homepage with product introduction and an app screen showcase](docs/images/homepage.png)
 
----
+*Public website captured September 22, 2026. App screenshots are the existing website's product showcase.*
 
-## What's in this repo
+## Repository scope
 
-This is the static frontend — the marketing site plus two self-contained web
-apps — deployed on Vercel. The iOS app and cloud API live elsewhere.
+This repository contains the static website and browser clients. The iPhone app and cloud API are maintained separately and are not included here. The website invites users to a private beta; its availability does not establish a public App Store release or verify physical vehicle behavior.
 
-| Path | Purpose |
-|---|---|
-| `index.html`, `pulse/`, `hub/` | Marketing homepage and product pages |
-| `beta/`, `beta/thanks/` | Private beta signup flow |
-| `eta/` | **Shared ETA** web app — follow a private live trip in the browser, no app or sign-in required (Apple MapKit JS) |
-| `auth/tesla/` | Tesla OAuth callback for account linking |
-| `support/`, `privacy/`, `terms/` | Customer and legal pages |
-| `.well-known/` | Tesla third-party public-key path |
-| `styles.css`, `site.js`, `analytics.js`, `assets/` | Shared styling, behavior, and assets |
-| `tests/`, `eta/*.test.js` | Test suite |
-| `vercel.json` | Routing + response security headers |
+## Engineering highlights
 
-## Highlights
+- **No-install trip sharing:** the [`eta/`](eta/) client displays arrival context and a map for a valid, time-limited sharing link.
+- **Token lifecycle:** the page removes the bearer token from the URL before creating the polling worker or loading MapKit. The worker owns the bearer for subsequent state requests.
+- **Explicit map provenance:** Tesla route geometry is preferred when valid; Apple-generated routes are labeled as estimates, and unusable routes have fallback behavior.
+- **Separate public and sensitive flows:** anonymous page-view analytics are included on marketing pages and omitted from the ETA and Tesla callback pages.
+- **Behavioral tests:** the test suite covers token handling, worker failures, map fallbacks, stale responses, page content, and selected accessibility properties.
 
-- **Shipped product** on a custom domain with automated Vercel deploys from `main`.
-- **Production-grade security headers** (`vercel.json`): strict Content-Security-Policy with script hashes, HSTS, `X-Frame-Options: DENY`, Cross-Origin-Opener-Policy, Referrer-Policy, and a locked-down Permissions-Policy.
-- **Shared ETA web app** (`eta/`) — a dependency-light client app built around Apple MapKit JS with a separated map model and a state worker, so a recipient can watch a live trip from a link with no install and no account.
-- **Tested** — accessibility, content, and page checks under `tests/`, plus unit tests for the Shared ETA app, map model, and state worker.
-- **Privacy-conscious analytics** — anonymous page views only; the Shared ETA and OAuth callback pages load no analytics.
+The [case study](docs/SHARED_ETA_CASE_STUDY.md) connects these choices to constraints and tests rather than relying on broad “production-grade” claims.
 
-## Tech
+## Architecture
 
-Static HTML/CSS/vanilla JS · Apple MapKit JS (Shared ETA) · Vercel hosting +
-edge headers · Node's built-in test runner. No build step — the site is served
-as authored.
-
-## Local development
-
-It's a static site — serve the repo root with any static file server:
-
-```bash
-# Python
-python3 -m http.server 8000
-# or Node
-npx serve .
+```mermaid
+flowchart LR
+    Visitor[Visitor] --> Site[Static pages on Vercel]
+    Recipient[Trip-link recipient] --> ETA[ETA browser client]
+    ETA --> Worker[State polling worker]
+    Worker --> API[Separate cloud API]
+    ETA --> Maps[Apple MapKit JS]
+    Tesla[Tesla authorization redirect] --> Callback[Callback page]
 ```
 
-Then open `http://localhost:8000`.
+**Stack:** HTML, CSS, JavaScript, Web Workers, Apple MapKit JS, Vercel routing/headers, Node's built-in test runner. No frontend build step.
 
-Run the tests with Node's built-in runner:
+## Source map
+
+| Path | Purpose |
+| --- | --- |
+| [`index.html`](index.html), [`pulse/`](pulse/), [`hub/`](hub/) | Product pages |
+| [`beta/`](beta/) | Beta signup and confirmation |
+| [`eta/app.js`](eta/app.js) | Recipient UI, token handoff, and map lifecycle |
+| [`eta/state-worker.js`](eta/state-worker.js) | Token ownership and state polling |
+| [`eta/map-model.js`](eta/map-model.js) | Route validation and selection |
+| [`auth/tesla/`](auth/tesla/) | Account-linking callback |
+| [`support/`](support/), [`privacy/`](privacy/), [`terms/`](terms/) | Support and policy pages |
+| [`vercel.json`](vercel.json) | Routing and response headers |
+| [`tests/`](tests/) and [`eta/*.test.js`](eta/) | Site and Shared ETA tests |
+
+## Run locally
+
+```bash
+python3 -m http.server 8000
+```
+
+Open `http://localhost:8000`. Marketing pages can be inspected locally; a live trip requires a valid sharing token and the separately configured API/MapKit services.
+
+Run the test suite with a current Node LTS:
 
 ```bash
 node --test tests/*.test.mjs eta/*.test.js
 ```
 
-## Deployment
+**Verification snapshot, September 22, 2026:** 77 tests passed on the source used for this documentation update. These include mocked browser/MapKit tests and source-level checks, not an end-to-end live-car test or a complete accessibility certification.
 
-Deployed on Vercel; pushes to `main` publish automatically. `vercel.json`
-defines redirects/rewrites and the response security headers. `CNAME` and
-`.nojekyll` are retained for compatibility.
+## Deployment and boundaries
+
+Vercel serves the authored files and applies the routing and response-header policy in `vercel.json`. A plain local static server does not reproduce those headers. The API enforces server-side trip access and expiry; client token handling is one part of that boundary.
+
+## Project context
+
+Part of Cody Ostler's Ludic Pulse work, developed with AI coding assistance. This public repository provides inspectable browser integration and testing examples while keeping the separate app and service implementations private.
