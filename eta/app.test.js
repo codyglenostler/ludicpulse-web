@@ -56,6 +56,12 @@ async function runPage(data, directionResults, options = {}) {
   const elements = new Map();
   const maps = [];
   const timers = [];
+  const intervals = [];
+  let now = Date.now();
+  class Clock extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
   const warnings = [];
   const pendingDirections = [];
   const workerMessages = [];
@@ -160,14 +166,20 @@ async function runPage(data, directionResults, options = {}) {
       },
     },
     getElementById(id) {
-      if (!elements.has(id)) elements.set(id, element());
+      if (!elements.has(id)) {
+        const node = element();
+        if (id === 'map-unavailable') {
+          node.querySelector('span').textContent = pageSource.match(/id="map-unavailable"[\s\S]*?<span>([^<]+)<\/span>/)[1];
+        }
+        elements.set(id, node);
+      }
       return elements.get(id);
     },
     addEventListener(name, callback) { if (name === 'visibilitychange') visibilityHandler = callback; },
     createElement() { return element(); },
   };
   const context = vm.createContext({
-    Date,
+    Date: Clock,
     DOMPoint: class DOMPoint { constructor(x, y) { Object.assign(this, { x, y }); } },
     console: { warn(message) { warnings.push(message); } },
     crypto: { randomUUID: () => 'session-id' },
@@ -177,8 +189,12 @@ async function runPage(data, directionResults, options = {}) {
     location,
     structuredClone,
     URLSearchParams,
-    setInterval: () => 1,
-    clearInterval() {},
+    setInterval(callback, delay) {
+      const timer = { callback, delay, active: true };
+      intervals.push(timer);
+      return timer;
+    },
+    clearInterval(timer) { if (timer) timer.active = false; },
     setTimeout(callback, delay) {
       const timer = { callback, delay, active: true };
       timers.push(timer);
@@ -206,6 +222,20 @@ async function runPage(data, directionResults, options = {}) {
     get thirdPartyObservedHash() { return thirdPartyObservedHash; },
     get workerAttempts() { return workerAttempts; },
     workerMessages,
+    get now() { return now; },
+    async advance(ms) {
+      now += ms;
+      intervals.filter(timer => timer.active).forEach(timer => timer.callback());
+      await settle();
+    },
+    async message(message) {
+      stateWorker.listeners.get('message')({ data: message });
+      await settle();
+    },
+    async workerError() {
+      stateWorker.listeners.get('error')();
+      await settle();
+    },
     async runNextTimer() {
       const timer = timers.find((candidate) => candidate.active);
       assert.ok(timer, 'expected an active retry timer');
@@ -291,6 +321,102 @@ test('treats malformed Worker state as a retryable polling error', async () => {
   assert.equal(result.thirdPartyObservedHash, undefined);
 });
 
+test('ages the last update without inventing arrival and honors known expiry while offline', async () => {
+  const data = active({ routePoints: [position, destination], expiresAt: new Date(Date.now() + 120_000).toISOString() });
+  const result = await runPage(data, { routes: [] });
+  await result.advance(61_000);
+  assert.equal(result.elements.get('state-chip').textContent, 'Update delayed');
+  assert.equal(result.elements.get('countdown').textContent, '—');
+  assert.equal(result.elements.get('arrival').textContent, '—');
+  assert.match(result.elements.get('route-source').textContent, /Last known/);
+  assert.equal(result.elements.get('trip').hidden, false);
+  await result.advance(60_000);
+  assert.equal(result.elements.get('terminal-title').textContent, 'Link expired');
+  assert.equal(result.elements.get('trip').hidden, true);
+  assert.equal(result.stateWorker.terminated, true);
+});
+
+test('hides delayed ETA metrics and resumes them only after a fresh update', async () => {
+  const data = active({ routePoints: [position, destination] });
+  const result = await runPage(data, { routes: [] });
+  await result.message({ type: 'error' });
+  assert.equal(result.elements.get('countdown').textContent, '—');
+  assert.equal(result.elements.get('arrival').textContent, '—');
+  await result.message({ type: 'state', data });
+  assert.equal(result.elements.get('state-chip').textContent, 'Live');
+  assert.equal(result.elements.get('countdown').textContent, '20 min');
+});
+
+test('asks to reopen the original link when the isolated bearer Worker fails', async () => {
+  const result = await runPage(active({ routePoints: [position, destination] }), { routes: [] });
+  await result.workerError();
+  assert.equal(result.elements.get('trip').hidden, true);
+  assert.equal(result.elements.get('loading').hidden, true);
+  assert.equal(result.elements.get('terminal').hidden, false);
+  assert.equal(result.elements.get('terminal-title').textContent, 'Open the shared link again');
+  assert.match(result.elements.get('terminal-body').textContent, /connection was interrupted/i);
+  assert.match(result.elements.get('terminal-body').textContent, /original link/i);
+  assert.equal(result.stateWorker.terminated, true);
+  assert.equal(result.timers.filter(timer => timer.active).length, 0);
+  assert.equal(result.workerAttempts, 1);
+  assert.equal(result.location.hash, '');
+});
+
+test('a delayed no-map view does not claim its hidden arrival metrics are still updating', async () => {
+  const data = active({ state: 'delayed', mapToken: null });
+  const result = await runPage(data, { routes: [] });
+  assert.equal(result.elements.get('map-unavailable').hidden, false);
+  assert.equal(result.elements.get('arrival').textContent, '—');
+  assert.equal(result.elements.get('countdown').textContent, '—');
+  assert.equal(result.elements.get('map-unavailable').querySelector('span').textContent, 'Waiting for a fresh trip update.');
+  await result.message({ type: 'state', data: { ...data, state: 'active' } });
+  assert.equal(result.elements.get('map-unavailable').querySelector('span').textContent, 'Arrival and trip progress are still updating.');
+});
+
+test('keeps a background-aged trip delayed until a fresh response arrives', async () => {
+  const data = active({ routePoints: [position, destination] });
+  const result = await runPage(data, { routes: [] });
+  await result.setHidden(true);
+  await result.advance(90_000);
+  await result.setHidden(false);
+  assert.equal(result.elements.get('state-chip').textContent, 'Update delayed');
+  assert.equal(result.elements.get('countdown').textContent, '—');
+  await result.message({ type: 'state', data: { ...data, updatedAt: new Date(result.now).toISOString(),
+    etaAt: new Date(result.now + 10 * 60_000).toISOString() } });
+  assert.equal(result.elements.get('state-chip').textContent, 'Live');
+  assert.equal(result.elements.get('countdown').textContent, '10 min');
+});
+
+test('does not load a map for a known-expired first response', async () => {
+  const result = await runPage(active({ expiresAt: new Date(Date.now() - 1).toISOString() }), { routes: [] });
+  assert.equal(result.elements.get('terminal-title').textContent, 'Link expired');
+  assert.equal(result.directionCalls, 0);
+  assert.equal(result.thirdPartyObservedHash, undefined);
+});
+
+test('never resurrects an ended trip from late events or browser visibility changes', async () => {
+  const result = await runPage(active({ routePoints: [position, destination] }), { routes: [] });
+  await result.message({ type: 'state', data: { state: 'ended' } });
+  const starts = result.workerMessages.filter(message => message.type === 'start').length;
+  await result.message({ type: 'error' });
+  await result.message({ type: 'state', data: active() });
+  await result.setHidden(true);
+  await result.setHidden(false);
+  assert.equal(result.elements.get('trip').hidden, true);
+  assert.equal(result.elements.get('terminal').hidden, false);
+  assert.equal(result.elements.get('terminal-title').textContent, 'Sharing ended');
+  assert.equal(result.workerMessages.filter(message => message.type === 'start').length, starts);
+});
+
+test('unknown state envelopes remain recoverable instead of claiming sharing ended', async () => {
+  const result = await runPage(active({ routePoints: [position, destination] }), { routes: [] });
+  await result.message({ type: 'state', data: { error: 'internal error' } });
+  assert.equal(result.elements.get('terminal').hidden, true);
+  assert.equal(result.elements.get('state-chip').textContent, 'Update delayed');
+  await result.message({ type: 'state', data: active({ routePoints: [position, destination] }) });
+  assert.equal(result.elements.get('state-chip').textContent, 'Live');
+});
+
 test('draws a labeled Apple estimate chosen with Tesla remaining distance', async () => {
   const short = new (class { constructor() { this.distance = 16_000; this.polyline = { style: null }; } })();
   const match = new (class { constructor() { this.distance = 19_300; this.polyline = { style: null }; } })();
@@ -307,6 +433,64 @@ test('prefers exact Tesla route geometry and skips Apple directions', async () =
   assert.equal(result.directionCalls, 0);
   assert.equal(result.elements.get('route-source').textContent, 'Tesla route');
   assert.equal(result.elements.get('route-source').hidden, false);
+});
+
+test('caches same-version omission and clears only an explicit empty route', async () => {
+  const estimated = { distance: 19_300, polyline: { style: null } };
+  const result = await runPage(active({ routePoints: [position, destination], routeVersion: 'route-a' }), { routes: [estimated] });
+  await result.message({ type: 'state', data: active({ routeVersion: 'route-a' }) });
+  assert.equal(result.elements.get('route-source').textContent, 'Tesla route');
+  assert.equal(result.directionCalls, 0);
+  await result.message({ type: 'state', data: { state: 'delayed' } });
+  assert.equal(result.elements.get('route-source').textContent, 'Last known · Tesla route');
+  await result.message({ type: 'state', data: active({ routeVersion: '', routePoints: [] }) });
+  assert.equal(result.directionCalls, 1);
+  assert.equal(result.elements.get('route-source').textContent, 'Estimated route');
+  assert.ok(result.maps[0].items.includes(estimated.polyline));
+  assert.ok(!result.maps[0].items.some(item => Array.isArray(item.points)));
+});
+
+test('does not carry old Tesla geometry into a changed version without points', async () => {
+  const estimated = { distance: 19_300, polyline: { style: null } };
+  const result = await runPage(active({ routePoints: [position, destination], routeVersion: 'route-a' }), { routes: [estimated] });
+  await result.message({ type: 'state', data: active({ routeVersion: 'route-b' }) });
+  assert.equal(result.directionCalls, 1);
+  assert.equal(result.elements.get('route-source').textContent, 'Estimated route');
+  assert.ok(!result.maps[0].items.some(item => Array.isArray(item.points)));
+});
+
+for (const source of ['Tesla', 'Apple']) test(`explicit destination redaction removes prior ${source} route details`, async () => {
+  const estimated = { distance: 19_300, polyline: { style: null } };
+  const result = await runPage(active({ driverFirstName: 'Sample', destinationName: 'Example destination',
+    ...(source === 'Tesla' ? { routePoints: [position, destination], routeVersion: 'route-a' } : {}),
+  }), { routes: [estimated] });
+  await result.message({ type: 'state', data: active({ driverFirstName: null, destinationName: null,
+    destination: null, routePoints: [], routeVersion: '' }) });
+  assert.equal(result.elements.get('heading').textContent, 'On the way');
+  assert.equal(result.elements.get('destination').hidden, true);
+  assert.equal(result.elements.get('destination').textContent, '');
+  assert.equal(result.elements.get('route-source').hidden, true);
+  assert.equal(result.elements.get('route-legend').hidden, true);
+  assert.equal(result.elements.get('route-line').attributes.d, '');
+  assert.equal(result.elements.get('destination-marker').attributes.cx, undefined);
+  assert.ok(!result.maps[0].items.includes(estimated.polyline));
+  assert.ok(!result.maps[0].items.some(item => Array.isArray(item.points) || item.options?.title === 'End'));
+  assert.equal(result.elements.get('progress').attributes['aria-valuenow'], '40');
+  assert.equal(result.elements.get('map').hidden, false);
+  await result.message({ type: 'state', data: { state: 'delayed' } });
+  assert.equal(result.elements.get('destination').textContent, '');
+  assert.ok(!result.maps[0].items.some(item => item.options?.title === 'End'));
+});
+
+test('late Apple directions cannot restore a destination after explicit redaction', async () => {
+  const estimated = { distance: 19_300, polyline: { style: null } };
+  const result = await runPage(active(), [{ deferred: true, value: { routes: [estimated] } }]);
+  await result.message({ type: 'state', data: active({ destinationName: null, destination: null,
+    routePoints: [], routeVersion: '' }) });
+  result.pendingDirections[0]();
+  await settle();
+  assert.ok(!result.maps[0].items.includes(estimated.polyline));
+  assert.equal(result.elements.get('route-source').hidden, true);
 });
 
 test('marks chronological route ends with small green Start and red End dots', async () => {
@@ -387,4 +571,15 @@ test('discards a stale directions response after backgrounding and refreshes on 
   await result.setHidden(false);
   assert.equal(result.directionCalls, 2);
   assert.ok(result.maps[0].items.includes(fresh.polyline));
+});
+
+test('discards pending directions after sharing expires', async () => {
+  const stale = { distance: 19_300, polyline: { style: null } };
+  const result = await runPage(active(), [{ deferred: true, value: { routes: [stale] } }]);
+  await result.message({ type: 'state', data: { state: 'expired' } });
+  result.pendingDirections[0]();
+  await settle();
+  assert.ok(!result.maps[0].items.includes(stale.polyline));
+  assert.equal(result.elements.get('trip').hidden, true);
+  assert.equal(result.elements.get('terminal-title').textContent, 'Link expired');
 });

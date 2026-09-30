@@ -12,6 +12,7 @@
   }
   const el = (id) => document.getElementById(id);
   let latest = null;
+  let ended = false;
   let tickTimer = null;
   let stateWorker = null;
   let stateWorkerReady = false;
@@ -26,29 +27,50 @@
   let estimateGeneration = 0;
   let estimateFailures = 0;
   let estimateRetryTimer = null;
+  let routeSourceLabel = null;
 
   const {
     validPoint, validPoints, presentation, requestAppleRoute, selectAppleRoute,
     shouldRefreshEstimate,
   } = window.EtaMapModel;
   const ESTIMATE_RETRY_MS = [5_000, 15_000, 60_000];
+  // Match the API's telemetry freshness window, including while polls cannot finish.
+  const LIVE_AFTER_MS = 60_000;
   const finite = (value) => typeof value === 'number' && Number.isFinite(value);
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
   const clock = (date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const miles = (value) => `${value < 10 ? value.toFixed(1) : Math.round(value)} mi left`;
+  function isDelayed(data) {
+    const updatedAt = Date.parse(data?.updatedAt);
+    return data?.state === 'delayed' || !Number.isFinite(updatedAt) || Date.now() - updatedAt > LIVE_AFTER_MS;
+  }
   function terminal(state) {
+    if (ended) return;
+    ended = true;
     el('loading').hidden = true; el('trip').hidden = true; el('terminal').hidden = false;
     el('terminal-title').textContent = state === 'expired' ? 'Link expired'
-      : state === 'reopen' ? 'Open the shared link again' : 'Sharing ended';
+      : state === 'reopen' || state === 'reconnect' ? 'Open the shared link again' : 'Sharing ended';
     el('terminal-body').textContent = state === 'expired' ? 'This four-hour private link has expired.'
       : state === 'reopen' ? 'For privacy, reloading clears this trip. Reopen the original link to continue.'
+        : state === 'reconnect' ? 'The private connection was interrupted. Reopen the original link to reconnect.'
         : 'The driver arrived, stopped sharing, or changed destinations.';
     stopPolling();
+    if (workerRetryTimer) clearTimeout(workerRetryTimer);
+    workerRetryTimer = null;
+    stateWorker?.terminate(); stateWorker = null; stateWorkerReady = false;
+    latest = null; currentMapToken = null; estimatedRoute = null; token = null;
   }
 
   function svgRoute(points, progress, position) {
     const svg = el('route-fallback');
-    if (!validPoints(points)) { svg.setAttribute('hidden', ''); return; }
+    if (!validPoints(points)) {
+      svg.setAttribute('hidden', '');
+      for (const id of ['route-background', 'route-line']) el(id).setAttribute('d', '');
+      for (const id of ['start-marker', 'car-marker', 'destination-marker']) {
+        el(id).removeAttribute('cx'); el(id).removeAttribute('cy');
+      }
+      return;
+    }
     const latitudes = points.map((point) => point.latitude);
     const longitudes = points.map((point) => point.longitude);
     const minLat = Math.min(...latitudes), maxLat = Math.max(...latitudes);
@@ -99,8 +121,9 @@
   }
 
   function routeLabel(value) {
+    routeSourceLabel = value;
     el('route-source').hidden = !value;
-    el('route-source').textContent = value || '';
+    el('route-source').textContent = value ? `${isDelayed(latest) ? 'Last known · ' : ''}${value}` : '';
   }
 
   function drawMap(data) {
@@ -153,7 +176,8 @@
         anchorOffset: new DOMPoint(sharedEndpoint ? kind === 'start' ? -8 : 8 : 0, 6) });
       mapItems = [endpoint(start, 'start', 'Start')];
       if (!samePoint(start, data.position) && !samePoint(end, data.position)) {
-        mapItems.push(new window.mapkit.MarkerAnnotation(coordinate(data.position), { color: '#378ADD', glyphText: '●', title: 'Current location' }));
+        mapItems.push(new window.mapkit.MarkerAnnotation(coordinate(data.position), { color: '#378ADD', glyphText: '●',
+          title: isDelayed(data) ? 'Last known location' : 'Current location' }));
       }
       if (model.hasRoute) {
         cancelEstimateWork(); estimatedRoute = null; estimateBasis = null; estimateFailures = 0;
@@ -188,7 +212,7 @@
   }
 
   function scheduleEstimateRetry() {
-    if (estimateRetryTimer || !latest || validPoints(latest.routePoints)) return;
+    if (ended || document.hidden || estimateRetryTimer || !latest || isDelayed(latest) || validPoints(latest.routePoints)) return;
     const delay = ESTIMATE_RETRY_MS[Math.min(estimateFailures - 1, ESTIMATE_RETRY_MS.length - 1)];
     estimateRetryTimer = setTimeout(() => {
       estimateRetryTimer = null;
@@ -197,7 +221,7 @@
   }
 
   async function requestEstimatedRoute(data, force = false) {
-    if (!window.mapkit || (!force && !shouldRefreshEstimate(estimateBasis, data))) return;
+    if (ended || document.hidden || isDelayed(data) || !window.mapkit || (!force && !shouldRefreshEstimate(estimateBasis, data))) return;
     if (estimateRetryTimer) clearTimeout(estimateRetryTimer);
     estimateRetryTimer = null;
     const requestGeneration = ++estimateGeneration;
@@ -222,8 +246,10 @@
   }
 
   function render(data) {
+    if (ended) return;
+    if (Date.parse(data.expiresAt) <= Date.now()) { terminal('expired'); return; }
     latest = data; el('loading').hidden = true; el('terminal').hidden = true; el('trip').hidden = false;
-    const delayed = data.state === 'delayed';
+    const delayed = isDelayed(data);
     el('state-chip').textContent = delayed ? 'Update delayed' : 'Live';
     el('state-chip').classList.toggle('delayed', delayed);
     el('heading').textContent = data.driverFirstName ? `${data.driverFirstName} is on the way` : 'On the way';
@@ -240,13 +266,32 @@
   }
 
   function tick() {
-    if (!latest) return;
+    if (ended || !latest) return;
+    if (Date.parse(latest.expiresAt) <= Date.now()) { terminal('expired'); return; }
+    const delayed = isDelayed(latest);
+    el('state-chip').textContent = delayed ? 'Update delayed' : 'Live';
+    el('state-chip').classList.toggle('delayed', delayed);
+    el('map-wrap').setAttribute('aria-label', delayed ? 'Last known route map' : 'Live route map');
+    el('map-unavailable').querySelector('span').textContent = delayed
+      ? 'Waiting for a fresh trip update.' : 'Arrival and trip progress are still updating.';
+    if (routeSourceLabel && !el('route-source').hidden) routeLabel(routeSourceLabel);
+    if (delayed) {
+      el('arrival').textContent = '—'; el('countdown').textContent = '—';
+      el('miles').textContent = 'Distance update delayed';
+      el('battery').textContent = 'Arrival battery update delayed';
+      if (estimateBasis) {
+        cancelEstimateWork(); estimateBasis = null;
+        if (!estimatedRoute && !validPoints(latest.routePoints)) routeLabel(null);
+      }
+      return;
+    }
     const eta = Date.parse(latest.etaAt);
     const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - Date.now()) / 60_000)) : null;
     el('countdown').textContent = minutes == null ? '—' : `${minutes} min`;
   }
 
   function showPollingError() {
+    if (ended) return;
     if (latest) {
       latest.state = 'delayed'; render(latest);
     } else {
@@ -255,6 +300,7 @@
   }
 
   function handleStateMessage(event) {
+    if (ended) return;
     const message = event.data;
     if (!message || typeof message !== 'object') return;
     if (message.type === 'error') { showPollingError(); return; }
@@ -268,16 +314,33 @@
     if (message.type !== 'state') return;
     const responseData = message.data;
     if (!responseData || typeof responseData !== 'object') { showPollingError(); return; }
+    const destinationCleared = responseData.destination === null;
+    const routeCleared = destinationCleared || responseData.routeVersion === ''
+      || (Array.isArray(responseData.routePoints) && responseData.routePoints.length === 0);
+    const versionChanged = Object.prototype.hasOwnProperty.call(responseData, 'routeVersion')
+      && responseData.routeVersion !== latest?.routeVersion;
+    if (destinationCleared) {
+      cancelEstimateWork(); estimatedRoute = null; estimateBasis = null; estimateFailures = 0;
+    }
     const data = responseData.state === 'active' || responseData.state === 'delayed'
-      ? { ...latest, ...responseData, routePoints: responseData.routePoints ?? latest?.routePoints }
+      ? { ...latest, ...responseData,
+        ...(destinationCleared ? { destination: null, destinationName: null } : {}),
+        // Omission can reuse only the same cached route. Empty points/version are
+        // authoritative invalidation, including privacy redaction of a destination.
+        routePoints: routeCleared ? [] : responseData.routePoints ?? (versionChanged ? [] : latest?.routePoints),
+        routeVersion: routeCleared || (versionChanged && responseData.routePoints == null)
+          ? undefined : responseData.routeVersion ?? latest?.routeVersion,
+      }
       : responseData;
     if (data.state === 'ended' || data.state === 'expired') terminal(data.state);
     else if (data.state === 'active' || data.state === 'delayed') render(data);
-    else terminal('ended');
+    else showPollingError();
   }
 
   function startPolling() {
-    if (!stateWorkerReady) return;
+    if (ended || document.hidden || !stateWorkerReady) return;
+    tick();
+    if (ended) return;
     stateWorker?.postMessage({ type: 'start' });
     tickTimer ??= setInterval(tick, 1_000);
   }
@@ -288,6 +351,7 @@
   }
 
   function retryWorker() {
+    if (ended) return;
     stateWorker?.terminate();
     stateWorker = null; stateWorkerReady = false;
     if (!token || workerRetryTimer) return;
@@ -299,11 +363,13 @@
   }
 
   function handleWorkerError() {
+    if (ended) return;
     if (token) retryWorker();
-    else showPollingError();
+    else terminal('reconnect');
   }
 
   function initializePolling() {
+    if (ended) return;
     try {
       stateWorker = new Worker('/eta/state-worker.js?v=20260830-token-isolation', {
         name: 'ludic-eta-state',
