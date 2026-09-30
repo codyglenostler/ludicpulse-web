@@ -51,9 +51,17 @@ test('privacy describes visible charging places, shared memory reuse and provena
   assert.match(privacy, /does not request your phone’s current GPS location/);
   assert.match(privacy, /short-lived in-memory cache/);
   assert.match(privacy, /does not write those results into charging history/);
-  assert.match(privacy, /Effective September 16, 2026/);
+  assert.match(privacy, /Effective September 30, 2026/);
   assert.match(privacy, /up to eight enabled schedule locations/);
   assert.match(privacy, /Connectivity loss alone is not treated as sleep/);
+});
+
+test('privacy distinguishes live ETA minimization from persistence and backup expiry', () => {
+  const privacy = read('privacy/index.html');
+  for (const text of ['keyed, per-share comparison code', 'not a readable destination name or coordinates',
+    'cleared when the share ends or during expiry cleanup', 'runs at least hourly', 'separate matching key is not included in database backups',
+    'not immediate physical erasure', 'requests a rewrite at least daily',
+    'former readable destination comparison data', '30-day backup policy']) assert.ok(privacy.includes(text), text);
 });
 
 function wordCount(html) {
