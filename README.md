@@ -12,6 +12,12 @@ The public web surface for Ludic Pulse, a Tesla companion app: product pages, pr
 
 This repository contains the static website and browser clients. The iPhone app and cloud API are maintained separately and are not included here. The website invites users to a private beta; its availability does not establish a public App Store release or verify physical vehicle behavior.
 
+## A quick review
+
+1. **See the public product surface:** open [the website](https://ludicpulse.com). The marketing pages are available without connecting a Tesla account.
+2. **Review the integration:** read [the Shared ETA case study](docs/SHARED_ETA_CASE_STUDY.md), then follow [the browser client](eta/app.js) and [polling worker](eta/state-worker.js).
+3. **Inspect failure behavior:** start with [map-model tests](eta/map-model.test.js) and [worker tests](eta/state-worker.test.js). A live ETA demonstration requires a valid private sharing link; the public code and tests can be reviewed without one.
+
 ## Engineering highlights
 
 - **No-install trip sharing:** the [`eta/`](eta/) client displays arrival context and a map for a valid, time-limited sharing link.
