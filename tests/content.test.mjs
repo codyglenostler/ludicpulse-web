@@ -73,52 +73,47 @@ function wordCount(html) {
     .filter(Boolean).length;
 }
 
-test('root page is the complete Pulse landing page', () => {
+test('Pulse introduces three overview screens and tab walkthroughs', () => {
   const main = mainMarkup(read('index.html'));
-  assert.equal((main.match(/<section\b/g) ?? []).length, 2);
-  assert.ok(wordCount(main) <= 260, `homepage has ${wordCount(main)} words`);
   assert.match(main, /Every drive\. Every charge\. Anytime\./);
-  assert.match(main, /data-screen-carousel/);
-  assert.equal((main.match(/class="carousel-screen/g) ?? []).length, 10);
-  assert.doesNotMatch(main, /Products|optional hardware|Free US beta/i);
+  for (const area of ['car', 'charging', 'drives']) {
+    assert.match(main, new RegExp('href="#' + area + '"'));
+    assert.match(main, new RegExp('<section id="' + area + '"'));
+    assert.match(main, new RegExp('/assets/screens/current/' + area + '-overview.png'));
+  }
+  const sections = [...main.matchAll(/<section id="(car|charging|drives)"[\s\S]*?<\/section>/g)];
+  assert.equal(sections.length, 3);
+  for (const section of sections) {
+    assert.match(section[0], /<h2/);
+    assert.match(section[0], /<dl class="workflow-list">/);
+    assert.match(section[0], /data-screen-carousel/);
+    assert.match(section[0], /<figcaption[\s\S]*data-screen-description/);
+    assert.match(section[0], /data-screen-previous/);
+    assert.match(section[0], /data-screen-next/);
+  }
+  assert.doesNotMatch(main, /Automations|Hardware/i);
+  assert.match(main, /sample and demo data/);
 });
 
-test('Pulse ends with a concise local-data privacy statement', () => {
+test('Pulse workflow copy preserves cost, location and correction boundaries', () => {
   const main = mainMarkup(read('index.html'));
-  const privacy = main.match(/<section class="hub-status[\s\S]*?<\/section>/)?.[0] ?? '';
-  assert.doesNotMatch(main, /screen-gallery-section|screen-reel/);
-  assert.doesNotMatch(privacy, /Built around your data|Read the privacy policy/);
-  assert.match(privacy, /personal data is stored locally for data privacy and integrity\./);
-  assert.doesNotMatch(privacy, /Join the private beta/);
+  for (const disclosure of ['Unknown prices stay unknown', 'Tesla bills, entered amounts and estimates',
+    'last known', 'Anyone with the link can view your live location', 'after four hours',
+    'explicitly save corrections', 'Estimated capacity', 'without routes or exact locations',
+    'confirmed physical change']) assert.ok(main.includes(disclosure), disclosure);
+  assert.match(main, /<section id="car"[\s\S]*Shared ETA[\s\S]*<section id="charging"/);
+});
+
+test('Pulse links its accurate phone and cloud privacy explanation', () => {
+  const main = mainMarkup(read('index.html'));
+  assert.match(main, /stored on your phone and in cloud services/);
+  assert.match(main, /href="\/privacy\/">Read how your data is handled/);
+  assert.doesNotMatch(main, /personal data is stored locally for data privacy and integrity/);
+  assert.match(main, /Exact route history stays off until you enable it/);
 });
 
 test('legacy Pulse route mirrors the root landing page', () => {
-  const main = mainMarkup(read('pulse/index.html'));
   assert.equal(read('pulse/index.html'), read('index.html'));
-  assert.match(main, /confirmed physical change/);
-  assert.match(main, /Drive history/);
-  assert.match(main, /Charging Live Activity/);
-  assert.match(main, /Shared ETA/);
-  assert.doesNotMatch(main, /hardware/i);
-});
-
-test('Inside the app fills the hero with four single-row product areas', () => {
-  const main = mainMarkup(read('index.html'));
-  const inside = main.match(/<div id="inside-pulse"[\s\S]*?<div class="inside-beta-action">[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? '';
-  assert.match(inside, /Inside the app/);
-  assert.equal((inside.match(/class="feature-row"/g) ?? []).length, 4);
-  for (const area of ['Car', 'Drives', 'Charging', 'Shared ETA']) assert.match(inside, new RegExp(`<dt>${area}<\\/dt>`));
-  assert.match(inside, /longer-term patterns/);
-  assert.match(inside, /Live Activity progress on the Lock Screen/);
-  assert.match(inside, /opens in any browser\. No app or sign-in required\./);
-  assert.doesNotMatch(inside, /—/);
-  assert.match(inside, /<\/dl>\s*<div class="inside-beta-action"><a class="button button-primary" href="\/beta\/">Join the private beta<\/a><\/div>/);
-  assert.doesNotMatch(main, /The full picture, without the noise|hero-actions/);
-});
-
-test('Shared ETA carousel sequence shows the message thread before the recipient route', () => {
-  const main = mainMarkup(read('index.html'));
-  assert.match(main, /data-screen-title="ETA message thread" src="\/assets\/screens\/showcase\/06-share-eta-message\.png"[\s\S]*data-screen-title="Recipient route" src="\/assets\/screens\/showcase\/07-recipient-eta\.png"/);
 });
 
 test('Hub stays concise and distinguishes present direction from launch facts', () => {

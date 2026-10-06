@@ -18,10 +18,10 @@
   <link rel="canonical" href="https://ludicpulse.com/">
   <link rel="icon" href="data:,">
   <link rel="preload" href="/assets/ludic-technologies-wordmark.png" as="image">
-  <link rel="preload" href="/assets/screens/showcase/01-car.png" as="image">
+  <link rel="preload" href="/assets/screens/current/car-overview.png" as="image">
   <script src="/bootstrap.js"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260829-message-thread-v1">
-  <script defer src="/site.js?v=20260901-analytics-v1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20261006-three-tabs">
+  <script defer src="/site.js?v=20261006-three-tabs"></script>
   <script defer src="/analytics.js?v=20260901-pageview-v1"></script>
   <title>Ludic Pulse — Tesla status, drives, charging, and ETA</title>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Ludic Pulse","applicationCategory":"UtilitiesApplication","operatingSystem":"iOS","url":"https://ludicpulse.com/","publisher":{"@type":"Organization","name":"Ludic Technologies LLC"}}</script>
@@ -40,45 +40,102 @@
   </header>
 
   <main id="main" tabindex="-1">
-    <section class="subpage-hero pulse-hero section-shell">
+    <section class="pulse-intro section-shell">
       <div class="hero-copy reveal">
         <h1>Every drive. Every charge. Anytime.</h1>
-        <p class="hero-lede">Ludic Pulse keeps vehicle status, charging, drives, efficiency, Live Activities, and private Shared ETA together in one focused iPhone app.</p>
-        <div id="inside-pulse" class="hero-inside">
-          <p class="eyebrow">Inside the app</p>
-          <dl class="feature-list hero-feature-list">
-            <div class="feature-row"><dt>Car</dt><dd>Current vehicle state and clear feedback that separates an accepted request from a confirmed physical change.</dd></div>
-            <div class="feature-row"><dt>Drives</dt><dd>Every recorded drive with route context, distance, time, efficiency, battery use, and longer-term patterns.</dd></div>
-            <div class="feature-row"><dt>Charging</dt><dd>Sessions, energy, power, targets, cost, battery behavior, and Live Activity progress on the Lock Screen.</dd></div>
-            <div class="feature-row"><dt>Shared ETA</dt><dd>A private, time-limited trip link with live arrival context that opens in any browser. No app or sign-in required.</dd></div>
-          </dl>
-          <div class="inside-beta-action"><a class="button button-primary" href="/beta/">Join the private beta</a></div>
-        </div>
+        <p class="hero-lede">Ludic Pulse brings your Tesla’s status, charging costs and driving history together on iPhone.</p>
+        <nav class="tab-jump-links" aria-label="Explore the app"><a href="#car">Car</a><a href="#charging">Charging</a><a href="#drives">Drives</a></nav>
+        <a class="button button-primary" href="/beta/">Join the private beta</a>
       </div>
+      <div class="overview-previews reveal">
+        <a class="overview-preview" href="#car"><img src="/assets/screens/current/car-overview.png" alt="Car overview in Ludic Pulse" width="1206" height="2622" fetchpriority="high"><span>Car <span aria-hidden="true">↗</span></span></a>
+        <a class="overview-preview" href="#charging"><img src="/assets/screens/current/charging-overview.png" alt="Charging overview in Ludic Pulse" width="1206" height="2622" loading="lazy"><span>Charging <span aria-hidden="true">↗</span></span></a>
+        <a class="overview-preview" href="#drives"><img src="/assets/screens/current/drives-overview.png" alt="Drives overview in Ludic Pulse" width="1206" height="2622" loading="lazy"><span>Drives <span aria-hidden="true">↗</span></span></a>
+      </div>
+      <p class="screens-note">Screens show sample and demo data. Available readings and controls depend on your vehicle, connection and history.</p>
+    </section>
 
-      <figure class="pulse-carousel reveal" data-screen-carousel aria-label="Ludic Pulse screen showcase" aria-roledescription="carousel">
-        <div class="phone phone-single carousel-phone">
-          <div class="carousel-stage">
-            <img class="carousel-screen is-active" data-screen-title="Car status" src="/assets/screens/showcase/01-car.png" alt="Ludic Pulse Car screen with battery, range, and vehicle status" width="828" height="1800" fetchpriority="high">
-            <img class="carousel-screen" data-screen-title="Drive overview" src="/assets/screens/showcase/02-drives.png" alt="Ludic Pulse Drives overview with distance, time, efficiency, and weekly charts" width="828" height="1800" aria-hidden="true">
-            <img class="carousel-screen" data-screen-title="Drive history" src="/assets/screens/showcase/10-drive-history.png" alt="Ludic Pulse Drive History screen with demo trips searchable by date or place" width="828" height="1800" aria-hidden="true">
-            <img class="carousel-screen" data-screen-title="Charging session" src="/assets/screens/showcase/03-charging.png" alt="Ludic Pulse live charging session with battery, power, target, and ETA" width="828" height="1800" aria-hidden="true">
-            <img class="carousel-screen" data-screen-title="Charging Live Activity" src="/assets/screens/showcase/04-charging-lockscreen.jpg" alt="iPhone Lock Screen showing the Ludic Pulse charging Live Activity" width="828" height="1800" aria-hidden="true">
-            <img class="carousel-screen" data-screen-title="Shared ETA" src="/assets/screens/showcase/05-share-eta.png" alt="Ludic Pulse Shared ETA screen with recipient privacy controls" width="828" height="1800" aria-hidden="true">
-            <img class="carousel-screen" data-screen-title="ETA message thread" src="/assets/screens/showcase/06-share-eta-message.png" alt="Messages conversation showing an incoming Ludic Pulse live ETA link preview" width="828" height="1800" aria-hidden="true">
-            <img class="carousel-screen" data-screen-title="Recipient route" src="/assets/screens/showcase/07-recipient-eta.png" alt="Shared ETA recipient page showing arrival time and an estimated route" width="828" height="1800" aria-hidden="true">
-            <img class="carousel-screen" data-screen-title="Driving Live Activity" src="/assets/screens/showcase/08-driving-lockscreen.jpg" alt="iPhone Lock Screen showing the Ludic Pulse driving Live Activity" width="828" height="1800" aria-hidden="true">
-            <img class="carousel-screen" data-screen-title="Active destination" src="/assets/screens/showcase/09-destination.png" alt="Ludic Pulse destination screen showing route status and arrival details" width="828" height="1800" aria-hidden="true">
-          </div>
+    <section id="car" class="tab-walkthrough section-shell reveal" aria-labelledby="car-title">
+      <div class="workflow-copy">
+        <p class="eyebrow">Car</p>
+        <h2 id="car-title">Your car, in the moment.</h2>
+        <p class="workflow-intro">Start with battery, estimated range and vehicle status. Open supported controls, charging progress or your active destination from one place.</p>
+        <dl class="workflow-list">
+          <div><dt>Status you can trust</dt><dd>Current readings and last-known values are labelled separately. Controls explain when setup or fresher readings are needed; an accepted request is distinct from a confirmed physical change.</dd></div>
+          <div><dt>Follow your arrival</dt><dd>Shared ETA combines arrival time, remaining distance and an updating car-location map. Old locations stay labelled as last known.</dd></div>
+          <div><dt>Choose what you share</dt><dd>Choose whether to show your first name and destination. Anyone with the link can view your live location, without an app or sign-in. Sharing ends at arrival, when navigation ends or changes destination, when you stop it, or after four hours.</dd></div>
+        </dl>
+      </div>
+      <figure class="pulse-carousel workflow-carousel" data-screen-carousel data-screen-autoplay="false" aria-label="Car workflow screens" aria-roledescription="carousel">
+        <div class="phone phone-single carousel-phone"><div class="carousel-stage">
+          <img class="carousel-screen is-active" data-screen-title="Car overview" data-screen-description="Battery, estimated range and vehicle status together." src="/assets/screens/current/car-overview.png" alt="Car overview: Battery, estimated range and vehicle status together." width="1206" height="2622" loading="lazy">
+          <img class="carousel-screen" data-screen-title="Vehicle controls" data-screen-description="Supported options with clear setup and reading freshness." src="/assets/screens/current/car-controls.png" alt="Vehicle controls: Supported options with clear setup and reading freshness." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Charging progress" data-screen-description="Available power, target and time remaining while charging." src="/assets/screens/current/car-charging.png" alt="Charging progress: Available power, target and time remaining while charging." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Shared ETA" data-screen-description="Arrival context, car location and deliberate sharing options." src="/assets/screens/current/car-shared-eta.png" alt="Shared ETA: Arrival context, car location and deliberate sharing options." width="1206" height="2622" loading="lazy" aria-hidden="true">
+        </div></div>
+        <figcaption class="carousel-caption"><strong data-screen-label>Car overview</strong><span data-screen-description>Battery, estimated range and vehicle status together.</span></figcaption>
+        <div class="carousel-controls" role="group" aria-label="Car screen controls">
+          <button type="button" data-screen-previous aria-label="Show previous car screen">←</button>
+          <div class="carousel-position"><div class="carousel-dots" data-screen-dots role="group" aria-label="Choose a car screen"></div><span class="carousel-count" data-screen-count>1 of 4</span></div>
+          <button type="button" data-screen-next aria-label="Show next car screen">→</button>
         </div>
-        <figcaption class="carousel-caption"><strong data-screen-label>Car status</strong></figcaption>
-        <div class="carousel-controls" role="group" aria-label="Screen controls">
-          <button type="button" data-screen-previous aria-label="Show previous screen">←</button>
-          <div class="carousel-position">
-            <div class="carousel-dots" data-screen-dots role="group" aria-label="Choose a screen"></div>
-            <span class="carousel-count" data-screen-count>1 of 10</span>
-          </div>
-          <button type="button" data-screen-next aria-label="Show next screen">→</button>
+      </figure>
+    </section>
+
+    <section id="charging" class="tab-walkthrough section-shell reveal" aria-labelledby="charging-title">
+      <div class="workflow-copy">
+        <p class="eyebrow">Charging</p>
+        <h2 id="charging-title">Know what went into every charge.</h2>
+        <p class="workflow-intro">Move from your charging overview to individual sessions, home rates and battery estimates. See which costs are recorded and where estimates begin.</p>
+        <dl class="workflow-list">
+          <div><dt>From totals to sessions</dt><dd>Choose a period, search your history and open a session for energy added, duration, battery levels and available power readings.</dd></div>
+          <div><dt>Costs with their source</dt><dd>Tesla bills, entered amounts and estimates retain their labels. Unknown prices stay unknown. Review dated home electricity rates or a scanned bill before applying an estimate.</dd></div>
+          <div><dt>Progress beyond the app</dt><dd>Charging Live Activities show progress on the Lock Screen. Battery views explain estimated capacity and the readings behind it.</dd></div>
+        </dl>
+      </div>
+      <figure class="pulse-carousel workflow-carousel" data-screen-carousel data-screen-autoplay="false" aria-label="Charging workflow screens" aria-roledescription="carousel">
+        <div class="phone phone-single carousel-phone"><div class="carousel-stage">
+          <img class="carousel-screen is-active" data-screen-title="Charging overview" data-screen-description="Current charging progress and recorded energy for your selected period." src="/assets/screens/current/charging-overview.png" alt="Charging overview: Current charging progress and recorded energy for your selected period." width="1206" height="2622" loading="lazy">
+          <img class="carousel-screen" data-screen-title="Charging history" data-screen-description="Search and browse recorded charging sessions." src="/assets/screens/current/charging-history.png" alt="Charging history: Search and browse recorded charging sessions." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Session details" data-screen-description="Energy, duration, battery levels and cost provenance." src="/assets/screens/current/charging-session.png" alt="Session details: Energy, duration, battery levels and cost provenance." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Home costs" data-screen-description="Review estimated home costs and open electricity rates and bills." src="/assets/screens/current/charging-home.png" alt="Home costs: Review estimated home costs and open electricity rates and bills." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Battery estimates" data-screen-description="Estimated capacity with the available data behind it." src="/assets/screens/current/charging-battery.png" alt="Battery estimates: Estimated capacity with the available data behind it." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Charging Live Activity" data-screen-description="Charging progress at a glance on the Lock Screen." src="/assets/screens/current/charging-live-activity.png" alt="Charging Live Activity: Charging progress at a glance on the Lock Screen." width="1260" height="2736" loading="lazy" aria-hidden="true">
+        </div></div>
+        <figcaption class="carousel-caption"><strong data-screen-label>Charging overview</strong><span data-screen-description>Current charging progress and recorded energy for your selected period.</span></figcaption>
+        <div class="carousel-controls" role="group" aria-label="Charging screen controls">
+          <button type="button" data-screen-previous aria-label="Show previous charging screen">←</button>
+          <div class="carousel-position"><div class="carousel-dots" data-screen-dots role="group" aria-label="Choose a charging screen"></div><span class="carousel-count" data-screen-count>1 of 6</span></div>
+          <button type="button" data-screen-next aria-label="Show next charging screen">→</button>
+        </div>
+      </figure>
+    </section>
+
+    <section id="drives" class="tab-walkthrough section-shell reveal" aria-labelledby="drives-title">
+      <div class="workflow-copy">
+        <p class="eyebrow">Drives</p>
+        <h2 id="drives-title">Make sense of the miles.</h2>
+        <p class="workflow-intro">Find a trip, compare familiar routes and explore your recorded driving patterns. Keep the supporting history close to every answer.</p>
+        <dl class="workflow-list">
+          <div><dt>Find the details</dt><dd>Search saved drives and review distance, time and recorded energy efficiency. Period totals and chart windows show what history they cover.</dd></div>
+          <div><dt>Compare familiar trips</dt><dd>Repeated trips form routes. Name places, review a trip’s date and endpoints, then explicitly save corrections. Searchable place selection keeps Save and Cancel within reach.</dd></div>
+          <div><dt>Explore your history</dt><dd>Weekly Pulse offers a private recap you can share without routes or exact locations. Saved insights calculate answers from your recorded drives and charging sessions.</dd></div>
+        </dl>
+      </div>
+      <figure class="pulse-carousel workflow-carousel" data-screen-carousel data-screen-autoplay="false" aria-label="Drives workflow screens" aria-roledescription="carousel">
+        <div class="phone phone-single carousel-phone"><div class="carousel-stage">
+          <img class="carousel-screen is-active" data-screen-title="Drives overview" data-screen-description="Your recorded distance, time and driving patterns." src="/assets/screens/current/drives-overview.png" alt="Drives overview: Your recorded distance, time and driving patterns." width="1206" height="2622" loading="lazy">
+          <img class="carousel-screen" data-screen-title="Drive history" data-screen-description="Find saved trips by date or place." src="/assets/screens/current/drives-history.png" alt="Drive history: Find saved trips by date or place." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Route comparison" data-screen-description="Compare repeated trips between familiar places." src="/assets/screens/current/drives-routes.png" alt="Route comparison: Compare repeated trips between familiar places." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Route corrections" data-screen-description="Review the trip and save the intended start and end places." src="/assets/screens/current/drives-correction.png" alt="Route corrections: Review the trip and save the intended start and end places." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Weekly Pulse" data-screen-description="A private recap of your last seven days." src="/assets/screens/current/drives-weekly.png" alt="Weekly Pulse: A private recap of your last seven days." width="1206" height="2622" loading="lazy" aria-hidden="true">
+          <img class="carousel-screen" data-screen-title="Saved insights" data-screen-description="Answers calculated from saved records, with supporting context." src="/assets/screens/current/drives-insights.png" alt="Saved insights: Answers calculated from saved records, with supporting context." width="1206" height="2622" loading="lazy" aria-hidden="true">
+        </div></div>
+        <figcaption class="carousel-caption"><strong data-screen-label>Drives overview</strong><span data-screen-description>Your recorded distance, time and driving patterns.</span></figcaption>
+        <div class="carousel-controls" role="group" aria-label="Drives screen controls">
+          <button type="button" data-screen-previous aria-label="Show previous drives screen">←</button>
+          <div class="carousel-position"><div class="carousel-dots" data-screen-dots role="group" aria-label="Choose a drives screen"></div><span class="carousel-count" data-screen-count>1 of 6</span></div>
+          <button type="button" data-screen-next aria-label="Show next drives screen">→</button>
         </div>
       </figure>
     </section>
@@ -86,7 +143,7 @@
     <section class="hub-status section-shell reveal" aria-labelledby="pulse-privacy-title">
       <div>
         <h2 id="pulse-privacy-title">Clear controls. Deliberate privacy.</h2>
-        <p>Pulse uses Tesla’s authorization flow, not your Tesla password. Exact route history stays off until you enable it, and personal data is stored locally for data privacy and integrity.</p>
+        <p>Pulse uses Tesla’s authorization flow, not your Tesla password. Exact route history stays off until you enable it. Data is stored on your phone and in cloud services where needed for connected features. <a href="/privacy/">Read how your data is handled.</a></p>
       </div>
     </section>
   </main>

@@ -313,11 +313,38 @@ h3 { font-size: 24px; line-height: 1.2; }
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   opacity: 0;
   transition: opacity 420ms ease;
 }
 .carousel-screen.is-active { z-index: 1; opacity: 1; }
+.pulse-intro { padding-block: 64px 72px; }
+.pulse-intro .hero-copy { max-width: 860px; }
+.tab-jump-links { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
+.tab-jump-links a { display: inline-flex; min-height: 44px; align-items: center; padding: 8px 18px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; }
+.tab-jump-links a:hover { border-color: var(--green); }
+.overview-previews { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(12px, 3vw, 40px); max-width: 1000px; margin: 48px auto 24px; }
+.overview-preview { display: grid; gap: 16px; text-decoration: none; }
+.overview-preview img { width: 100%; height: auto; aspect-ratio: 1206 / 2622; object-fit: contain; border: 4px solid #1c1d20; border-radius: clamp(16px, 3vw, 38px); background: #09090a; }
+.overview-preview > span { display: flex; align-items: center; justify-content: space-between; min-height: 44px; font-weight: 720; }
+.screens-note { max-width: 720px; color: var(--muted); font-size: 14px; }
+.tab-walkthrough { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 96px); padding-block: 72px; border-top: 1px solid var(--line); scroll-margin-top: 90px; align-items: center; }
+.workflow-copy h2 { font-size: clamp(32px, 4vw, 52px); }
+.workflow-intro { margin: 24px 0; color: var(--muted); font-size: 18px; }
+.workflow-list { margin: 0; }
+.workflow-list > div { padding: 22px 0; border-top: 1px solid var(--line); }
+.workflow-list dt { margin-bottom: 8px; font-weight: 720; }
+.workflow-list dd { margin: 0; color: var(--muted); }
+.workflow-carousel .carousel-stage { aspect-ratio: 1206 / 2622; }
+.workflow-carousel .carousel-screen { height: 100%; object-fit: contain; }
+.carousel-caption [data-screen-description] { margin-top: 6px; }
+@media (max-width: 760px) {
+  .pulse-intro { padding-block: 36px 48px; }
+  .tab-walkthrough { grid-template-columns: minmax(0, 1fr); padding-block: 48px; }
+  .tab-walkthrough .pulse-carousel { min-height: 0; }
+  .overview-previews { margin-top: 32px; }
+}
+html:not(.js) .workflow-carousel .carousel-controls { display: none; }
 .carousel-caption { display: grid; width: min(100%, 420px); place-items: center; margin-top: 20px; color: var(--muted); font-size: 13px; text-align: center; }
 .carousel-caption strong { color: var(--white); font-weight: 720; }
 .carousel-controls { display: flex; width: min(100%, 420px); align-items: center; justify-content: center; gap: 16px; margin-top: 12px; }

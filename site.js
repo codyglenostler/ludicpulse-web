@@ -110,6 +110,7 @@ document.querySelectorAll('[data-year]').forEach(element => {
 document.querySelectorAll('[data-screen-carousel]').forEach(carousel => {
   const screens = [...carousel.querySelectorAll('.carousel-screen')];
   const label = carousel.querySelector('[data-screen-label]');
+  const description = carousel.querySelector('.carousel-caption [data-screen-description]');
   const count = carousel.querySelector('[data-screen-count]');
   const previous = carousel.querySelector('[data-screen-previous]');
   const next = carousel.querySelector('[data-screen-next]');
@@ -141,6 +142,7 @@ document.querySelectorAll('[data-screen-carousel]').forEach(carousel => {
       button.setAttribute('aria-current', String(dotIndex === activeIndex));
     });
     if (label) label.textContent = screens[activeIndex]?.dataset.screenTitle ?? '';
+    if (description) description.textContent = screens[activeIndex]?.dataset.screenDescription ?? '';
     if (count) count.textContent = `${activeIndex + 1} of ${screens.length}`;
   }
 
@@ -150,7 +152,7 @@ document.querySelectorAll('[data-screen-carousel]').forEach(carousel => {
   }
 
   function start() {
-    if (reduceMotion.matches || document.hidden || timer) return;
+    if (carousel.dataset.screenAutoplay === 'false' || reduceMotion.matches || document.hidden || timer) return;
     timer = window.setInterval(() => showScreen(activeIndex + 1), 4500);
   }
 

@@ -95,17 +95,34 @@ test('brand system uses the locked colors and exact approved wordmark asset', ()
   assert.ok(existsSync(join(root, 'social-card.png')));
 });
 
-test('Pulse showcase uses every approved real capture at native proportions', () => {
+test('Pulse walkthroughs reference current captures with proportional rendering', () => {
   const html = read('index.html');
   for (const filename of [
-    '01-car.png', '02-drives.png', '03-charging.png', '04-charging-lockscreen.jpg',
-    '05-share-eta.png', '06-share-eta-message.png', '07-recipient-eta.png',
-    '08-driving-lockscreen.jpg', '09-destination.png', '10-drive-history.png',
-  ]) {
-    assert.ok(existsSync(join(root, 'assets/screens/showcase', filename)), filename);
-    assert.match(html, new RegExp(filename.replace('.', '\\.')));
+  "car-overview.png",
+  "car-controls.png",
+  "car-charging.png",
+  "car-shared-eta.png",
+  "charging-overview.png",
+  "charging-history.png",
+  "charging-session.png",
+  "charging-home.png",
+  "charging-battery.png",
+  "charging-live-activity.png",
+  "drives-overview.png",
+  "drives-history.png",
+  "drives-routes.png",
+  "drives-correction.png",
+  "drives-weekly.png",
+  "drives-insights.png"
+]) {
+    assert.ok(existsSync(join(root, 'assets/screens/current', filename)), filename);
+    assert.ok(html.includes('/assets/screens/current/' + filename), filename);
   }
-  assert.doesNotMatch(html, /pulse-charging\.png|pulse-insights\.png|screen-preview-grid/);
+  assert.doesNotMatch(html, /assets\/screens\/showcase/);
+  const css = read('styles.css');
+  assert.match(css, /\.workflow-carousel \.carousel-stage \{ aspect-ratio: 1206 \/ 2622;/);
+  assert.match(css, /\.workflow-carousel \.carousel-screen \{ height: 100%; object-fit: contain;/);
+  assert.match(read('site.js'), /dataset\.screenDescription/);
 });
 
 test('all public pages include baseline accessibility structure', () => {
