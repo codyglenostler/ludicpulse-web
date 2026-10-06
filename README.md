@@ -1,84 +1,81 @@
-# Ludic Technologies public site
+# Ludic Pulse Web
 
-Static company marketing, Ludic Hub, support, privacy, Terms, Tesla public-key,
-OAuth callback, and Shared ETA pages for `ludicpulse.com`.
+The public web surface for Ludic Pulse, a Tesla companion app: product pages, private-beta signup, support, Tesla account-linking callback, and a Shared ETA recipient experience that opens in a browser without an app install.
 
-Production is delivered by the Vercel project `ludicpulse-web`. GitHub `main`
-is connected for automatic deployments; `vercel.json` supplies HSTS, response
-CSP, framing protection, Permissions-Policy, referrer policy, MIME protection,
-and explicit cache behavior. The tracked GitHub workflow runs the requirement
-tests; `CNAME` and `.nojekyll` remain compatibility metadata, not evidence of a
-current Pages deployment workflow. Public DNS points to Vercel. Do not remove or weaken the
-response headers without rerunning the bounded production security audit.
+**[Visit Ludic Pulse](https://ludicpulse.com)** · **[Shared ETA engineering case study](docs/SHARED_ETA_CASE_STUDY.md)**
 
-The company homepage, `/pulse/`, `/hub/`, and `/beta/` are maintained directly in this repository.
-The approved wordmark and Pulse screenshots live in `assets/`; do not redraw the
-wordmark or replace it with generated lettering.
+![Ludic Pulse public homepage with product introduction and an app screen showcase](docs/images/homepage.png)
 
-The customer pages are generated from the cloud API's canonical public-page
-source so the deployed website and API copy stay aligned:
+*Public website captured September 22, 2026. App screenshots are the existing website's product showcase.*
 
-```bash
-cd /Users/codyostler/Projects/Tesla
-node node_modules/.pnpm/tsx@4.23.1/node_modules/tsx/dist/cli.mjs \
-  apps/cloud-api/scripts/export-public-pages.ts \
-  /Users/codyostler/Projects/ludicpulse-web /
+## Repository scope
+
+This repository contains the static website and browser clients. The iPhone app and cloud API are maintained separately and are not included here. The website invites users to a private beta; its availability does not establish a public App Store release or verify physical vehicle behavior.
+
+## A quick review
+
+1. **See the public product surface:** open [the website](https://ludicpulse.com). The marketing pages are available without connecting a Tesla account.
+2. **Review the integration:** read [the Shared ETA case study](docs/SHARED_ETA_CASE_STUDY.md), then follow [the browser client](eta/app.js) and [polling worker](eta/state-worker.js).
+3. **Inspect failure behavior:** start with [map-model tests](eta/map-model.test.js) and [worker tests](eta/state-worker.test.js). A live ETA demonstration requires a valid private sharing link; the public code and tests can be reviewed without one.
+
+## Engineering highlights
+
+- **No-install trip sharing:** the [`eta/`](eta/) client displays arrival context and a map for a valid, time-limited sharing link.
+- **Token lifecycle:** the page removes the bearer token from the URL before creating the polling worker or loading MapKit. The worker owns the bearer for subsequent state requests.
+- **Explicit map provenance:** Tesla route geometry is preferred when valid; Apple-generated routes are labeled as estimates, and unusable routes have fallback behavior.
+- **Separate public and sensitive flows:** anonymous page-view analytics are included on marketing pages and omitted from the ETA and Tesla callback pages.
+- **Behavioral tests:** the test suite covers token handling, worker failures, map fallbacks, stale responses, page content, and selected accessibility properties.
+
+The [case study](docs/SHARED_ETA_CASE_STUDY.md) connects these choices to constraints and tests rather than relying on broad “production-grade” claims.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Visitor[Visitor] --> Site[Static pages on Vercel]
+    Recipient[Trip-link recipient] --> ETA[ETA browser client]
+    ETA --> Worker[State polling worker]
+    Worker --> API[Separate cloud API]
+    ETA --> Maps[Apple MapKit JS]
+    Tesla[Tesla authorization redirect] --> Callback[Callback page]
 ```
 
-After regeneration, preserve `CNAME`, `.nojekyll`, `.well-known/`, `auth/`,
-`pulse/`, `hub/`, `beta/`, `assets/`, `styles.css`, `site.js`, `analytics.js`, `social-card.png`, `icon.png`,
-`favicon.png`, and this README. Review regenerated root, support, privacy, and
-Terms pages before committing so the shared company navigation remains intact.
-The Pulse app-icon files remain release assets only; public HTML must not
-reference or display them.
+**Stack:** HTML, CSS, JavaScript, Web Workers, Apple MapKit JS, Vercel routing/headers, Node's built-in test runner. No frontend build step.
 
-## Launch analytics
+## Source map
 
-Vercel Web Analytics is intentionally limited to anonymous page views on the
-marketing, support, legal, and private-beta pages. The Shared ETA recipient and
-Tesla callback pages do not load analytics. Use `https://ludicpulse.com/teaser/`
-for launch-post traffic, `/beta/` for signup intent, and `/beta/thanks/` for
-completed requests. The Vercel Hobby plan reports pages, referrers, countries,
-devices, browsers, and operating systems; custom events and UTM panels require a
-paid analytics plan. Web Analytics was enabled for the production project on
-September 1, 2026.
+| Path | Purpose |
+| --- | --- |
+| [`index.html`](index.html), [`pulse/`](pulse/), [`hub/`](hub/) | Product pages |
+| [`beta/`](beta/) | Beta signup and confirmation |
+| [`eta/app.js`](eta/app.js) | Recipient UI, token handoff, and map lifecycle |
+| [`eta/state-worker.js`](eta/state-worker.js) | Token ownership and state polling |
+| [`eta/map-model.js`](eta/map-model.js) | Route validation and selection |
+| [`auth/tesla/`](auth/tesla/) | Account-linking callback |
+| [`support/`](support/), [`privacy/`](privacy/), [`terms/`](terms/) | Support and policy pages |
+| [`vercel.json`](vercel.json) | Routing and response headers |
+| [`tests/`](tests/) and [`eta/*.test.js`](eta/) | Site and Shared ETA tests |
 
-Shared ETA website gates:
+## Run locally
+
+```bash
+python3 -m http.server 8000
+```
+
+Open `http://localhost:8000`. Marketing pages can be inspected locally; a live trip requires a valid sharing token and the separately configured API/MapKit services.
+
+Run the test suite with a current Node LTS:
 
 ```bash
 node --test tests/*.test.mjs eta/*.test.js
-node --check site.js && node --check eta/app.js && node --check eta/map-model.js && node --check eta/state-worker.js
-MAPKIT_TEST_TOKEN=... node eta/verify-mapkit-browser.mjs
 ```
 
-The browser gate runs the deployed adapter from the exact `https://ludicpulse.com`
-origin against Apple Maps. Use a fresh 15-minute `mapkit_js` token; the script
-keeps it in the environment and never prints it.
+**Verification snapshot, September 22, 2026:** 77 tests passed on the source used for this documentation update. These include mocked browser/MapKit tests and source-level checks, not an end-to-end live-car test or a complete accessibility certification.
 
-The OAuth callback intentionally forwards to the legacy API until the clean
-`api.ludicpulse.com` endpoint is verified and Tesla's allowed redirect URI is
-changed. Do not remove the old `statmask.com` routes while installed beta builds
-still reference them.
+## Deployment and boundaries
 
-## Source and route map
+Vercel serves the authored files and applies the routing and response-header policy in `vercel.json`. A plain local static server does not reproduce those headers. The API enforces server-side trip access and expiry; client token handling is one part of that boundary.
 
-| Location | Responsibility |
-| --- | --- |
-| `index.html`, `pulse/`, `hub/`, `beta/`, `beta/thanks/` | Public product pages and signup journey |
-| `support/`, `privacy/`, `terms/` | Customer pages aligned with the canonical cloud public-page source |
-| `eta/` | Self-contained Shared ETA recipient, model, worker and colocated tests |
-| `auth/tesla/`, `.well-known/appspecific/` | Installed OAuth callback and Tesla public-key compatibility paths |
-| Root JavaScript/CSS and `assets/` | Shared behavior, styling and approved public assets |
-| `tests/`, `.github/workflows/`, `vercel.json` | Source-level verification and routing/response policy |
+## Project context
 
-These physical names are public URL contracts. Do not move them merely to add
-`src/` or `public/` conventions. Some local `.vercel/output/static/` files are
-hard-linked to source files; generated output is not an independent backup and
-must not be edited as one. Environment and Vercel connection files remain local.
-
-The canonical checkout on this Mac is `/Users/codyostler/Projects/ludicpulse-web`.
-The older Desktop checkout was preserved separately; it is not the default
-editing or deployment source. The September 6 organization changes this README
-only; application files and public routes are unchanged. Publishing follows the
-configured Git deployment pipeline. Verify the resulting deployment or skip and
-record its actual state in Notion; this README is excluded by `.vercelignore`.
+Part of Cody Ostler's Ludic Pulse work, developed with AI coding assistance. This public repository provides inspectable browser integration and testing examples while keeping the separate app and service implementations private.
