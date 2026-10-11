@@ -1,19 +1,58 @@
 (() => {
   'use strict';
   const sessionParameter = '_eta_session';
-  const reloadedSession = !location.hash
-    && new URLSearchParams(location.search).has(sessionParameter);
+  const handoffPrefix = 'ludic.eta.handoff.';
+  const search = new URLSearchParams(location.search);
+  const reloadedSession = !location.hash && search.has(sessionParameter);
   let token = location.hash.slice(1);
-  const validToken = /^[A-Za-z0-9_-]{40,80}$/.test(token);
+  const isToken = value => typeof value === 'string' && /^[A-Za-z0-9_-]{40,80}$/.test(value);
+  // replaceState cannot scrub the immutable navigation timing URL. Only a new
+  // document may load third-party code; consume its one-use handoff first.
+  let allowMapKit = false;
+  let handoff = null;
+  let storageReady = false;
+  try {
+    handoff = sessionStorage.getItem(handoffPrefix + search.get(sessionParameter));
+    for (let index = sessionStorage.length - 1; index >= 0; index--) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(handoffPrefix)) sessionStorage.removeItem(key);
+    }
+    storageReady = true;
+  } catch { /* No browser storage: keep the first-party route-only view. */ }
   if (location.hash) {
-    const search = new URLSearchParams(location.search);
     search.set(sessionParameter, crypto.randomUUID());
-    history.replaceState(null, '', `${location.pathname}?${search}`);
+    const cleanURL = `${location.pathname}?${search}`;
+    history.replaceState(null, '', cleanURL);
+    if (isToken(token) && storageReady) {
+      const key = handoffPrefix + search.get(sessionParameter);
+      try {
+        sessionStorage.setItem(key, JSON.stringify({ token, createdAt: Date.now() }));
+        // The changed query also forces a real navigation when another original
+        // fragment link is opened later in this tab, after MapKit has loaded.
+        location.replace(cleanURL);
+        return;
+      } catch {
+        try { sessionStorage.removeItem(key); } catch { /* Never load MapKit. */ }
+      }
+    }
+  } else if (storageReady && handoff) {
+    try {
+      const value = JSON.parse(handoff);
+      const age = Date.now() - value?.createdAt;
+      if (isToken(value?.token) && typeof value.createdAt === 'number'
+        && Number.isFinite(age) && age >= 0 && age < 30_000) {
+        token = value.token;
+        allowMapKit = true;
+      }
+    } catch { /* Malformed or stale handoffs require the original link. */ }
   }
+  handoff = null;
+  const validToken = isToken(token);
   const el = (id) => document.getElementById(id);
   let latest = null;
   let ended = false;
   let tickTimer = null;
+  let expiryTimer = null;
   let stateWorker = null;
   let stateWorkerReady = false;
   let workerRetryTimer = null;
@@ -37,11 +76,12 @@
   // Match the API's telemetry freshness window, including while polls cannot finish.
   const LIVE_AFTER_MS = 60_000;
   const finite = (value) => typeof value === 'number' && Number.isFinite(value);
+  const timestamp = value => typeof value === 'string' ? Date.parse(value) : NaN;
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
   const clock = (date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const miles = (value) => `${value < 10 ? value.toFixed(1) : Math.round(value)} mi left`;
   function isDelayed(data) {
-    const updatedAt = Date.parse(data?.updatedAt);
+    const updatedAt = timestamp(data?.updatedAt);
     return data?.state === 'delayed' || !Number.isFinite(updatedAt) || Date.now() - updatedAt > LIVE_AFTER_MS;
   }
   function terminal(state) {
@@ -55,9 +95,21 @@
         : state === 'reconnect' ? 'The private connection was interrupted. Reopen the original link to reconnect.'
         : 'The driver arrived, stopped sharing, or changed destinations.';
     stopPolling();
+    if (expiryTimer) clearTimeout(expiryTimer);
+    expiryTimer = null;
     if (workerRetryTimer) clearTimeout(workerRetryTimer);
     workerRetryTimer = null;
     stateWorker?.terminate(); stateWorker = null; stateWorkerReady = false;
+    try { if (mapItems.length) map?.removeItems(mapItems); } catch { /* Continue private-data cleanup. */ }
+    mapItems = [];
+    try { map?.destroy?.(); } catch { /* A renderer failure must not retain trip state. */ }
+    map = null;
+    svgRoute(null);
+    for (const id of ['heading', 'destination', 'arrival', 'countdown', 'miles', 'battery', 'route-source']) {
+      el(id).textContent = '';
+    }
+    el('progress').removeAttribute('aria-valuenow');
+    el('progress').querySelector('span').style.width = '';
     latest = null; currentMapToken = null; estimatedRoute = null; token = null;
   }
 
@@ -100,7 +152,7 @@
       return distance < best.distance ? { index, distance } : best;
     }, { index: 0, distance: Infinity }).index : null;
     const routeIndex = nearestIndex ?? Math.round(
-      clamp(progress, 0, 100) / 100 * (points.length - 1),
+      (finite(progress) ? clamp(progress, 0, 100) : 0) / 100 * (points.length - 1),
     );
     const current = project(points[routeIndex]);
     el('car-marker').setAttribute('cx', current.x); el('car-marker').setAttribute('cy', current.y);
@@ -130,7 +182,7 @@
     svgRoute(data.routePoints, data.progress, data.position);
     el('map-unavailable').hidden = true;
     const model = presentation(data);
-    if (!model.canRenderMap) { showMapFallback(data); return; }
+    if (!allowMapKit || !model.canRenderMap) { showMapFallback(data); return; }
     currentMapToken = data.mapToken;
     if (window.mapkit) { renderMapKit(data); return; }
     if (mapScriptLoading) return;
@@ -247,15 +299,30 @@
 
   function render(data) {
     if (ended) return;
-    if (Date.parse(data.expiresAt) <= Date.now()) { terminal('expired'); return; }
+    const expiresAt = timestamp(data.expiresAt);
+    if (!Number.isFinite(expiresAt)) { terminal('reconnect'); return; }
+    if (expiresAt <= Date.now()) { terminal('expired'); return; }
+    // Polling pauses in hidden tabs, but the privacy deadline does not. Browsers
+    // can suspend timers; tick() also enforces expiry before a restored view polls.
+    if (expiryTimer) clearTimeout(expiryTimer);
+    const expire = () => {
+      expiryTimer = null;
+      if (ended) return;
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) terminal('expired');
+      else expiryTimer = setTimeout(expire, Math.min(remaining, 2_147_483_647));
+    };
+    expiryTimer = setTimeout(expire, Math.min(expiresAt - Date.now(), 2_147_483_647));
     latest = data; el('loading').hidden = true; el('terminal').hidden = true; el('trip').hidden = false;
     const delayed = isDelayed(data);
     el('state-chip').textContent = delayed ? 'Update delayed' : 'Live';
     el('state-chip').classList.toggle('delayed', delayed);
-    el('heading').textContent = data.driverFirstName ? `${data.driverFirstName} is on the way` : 'On the way';
-    el('destination').hidden = !data.destinationName;
-    el('destination').textContent = data.destinationName ? `to ${data.destinationName}` : '';
-    const etaAt = new Date(data.etaAt);
+    const driverName = typeof data.driverFirstName === 'string' ? data.driverFirstName : '';
+    const destinationName = typeof data.destinationName === 'string' ? data.destinationName : '';
+    el('heading').textContent = driverName ? `${driverName} is on the way` : 'On the way';
+    el('destination').hidden = !destinationName;
+    el('destination').textContent = destinationName ? `to ${destinationName}` : '';
+    const etaAt = new Date(timestamp(data.etaAt));
     el('arrival').textContent = Number.isFinite(etaAt.getTime()) ? clock(etaAt) : '—';
     el('miles').textContent = finite(data.remainingMiles) ? miles(Math.max(0, data.remainingMiles)) : 'Distance unavailable';
     el('battery').textContent = finite(data.arrivalSoc) ? `Arrival battery ${Math.round(data.arrivalSoc)}%` : 'Arrival battery unavailable';
@@ -267,7 +334,7 @@
 
   function tick() {
     if (ended || !latest) return;
-    if (Date.parse(latest.expiresAt) <= Date.now()) { terminal('expired'); return; }
+    if (timestamp(latest.expiresAt) <= Date.now()) { terminal('expired'); return; }
     const delayed = isDelayed(latest);
     el('state-chip').textContent = delayed ? 'Update delayed' : 'Live';
     el('state-chip').classList.toggle('delayed', delayed);
@@ -285,7 +352,7 @@
       }
       return;
     }
-    const eta = Date.parse(latest.etaAt);
+    const eta = timestamp(latest.etaAt);
     const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - Date.now()) / 60_000)) : null;
     el('countdown').textContent = minutes == null ? '—' : `${minutes} min`;
   }

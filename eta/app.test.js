@@ -74,11 +74,17 @@ async function runPage(data, directionResults, options = {}) {
   let thirdPartyObservedHash;
   let parentFetchCalls = 0;
   let workerAttempts = 0;
+  let navigationURL = `https://example.test/eta/${options.search ?? '?source=message'}${options.hash ?? `#${'A'.repeat(43)}`}`;
+  let navigationTarget;
+  let thirdPartyNavigationURL;
+  let thirdPartyStorage;
+  const storage = new Map(options.storage ?? []);
   class FakeMap {
     static ColorSchemes = { Dark: 'dark' };
     constructor() { this.items = []; maps.push(this); }
     addItems(items) { this.items.push(...items); }
-    removeItems(items) { this.items = this.items.filter((item) => !items.includes(item)); }
+    removeItems(items) { if (options.mapCleanupThrows) throw new Error('Map cleanup failed'); this.items = this.items.filter((item) => !items.includes(item)); }
+    destroy() { if (options.mapCleanupThrows) throw new Error('Map destruction failed'); }
     showItems() {}
   }
   class Overlay {
@@ -125,12 +131,14 @@ async function runPage(data, directionResults, options = {}) {
     hash: options.hash ?? `#${'A'.repeat(43)}`,
     pathname: '/eta/',
     search: options.search ?? '?source=message',
+    replace(url) { eventOrder.push('navigate'); navigationTarget = url; },
   };
   const history = {
     replaceState(state, title, url) {
       eventOrder.push('history');
       historyCalls.push({ state, title, url });
       location.hash = '';
+      location.search = url.slice(url.indexOf('?'));
     },
   };
   const window = { EtaMapModel: model };
@@ -161,6 +169,8 @@ async function runPage(data, directionResults, options = {}) {
       append(script) {
         eventOrder.push('mapkit');
         thirdPartyObservedHash = location.hash;
+        thirdPartyNavigationURL = navigationURL;
+        thirdPartyStorage = Array.from(storage.entries());
         window.mapkit = mapkit;
         script.onload();
       },
@@ -187,6 +197,13 @@ async function runPage(data, directionResults, options = {}) {
     fetch: async () => { parentFetchCalls += 1; throw new Error('parent fetch must remain unused'); },
     history,
     location,
+    sessionStorage: {
+      get length() { return storage.size; },
+      key(index) { return Array.from(storage.keys())[index]; },
+      getItem(key) { if (options.storageBlocked) throw new Error('Unavailable'); return storage.get(key) ?? null; },
+      setItem(key, value) { if (options.storageBlocked) throw new Error('Unavailable'); storage.set(key, value); },
+      removeItem(key) { if (options.removeBlocked) throw new Error('Unavailable'); storage.delete(key); },
+    },
     structuredClone,
     URLSearchParams,
     setInterval(callback, delay) {
@@ -196,7 +213,7 @@ async function runPage(data, directionResults, options = {}) {
     },
     clearInterval(timer) { if (timer) timer.active = false; },
     setTimeout(callback, delay) {
-      const timer = { callback, delay, active: true };
+      const timer = { callback, delay, due: now + delay, active: true };
       timers.push(timer);
       return timer;
     },
@@ -205,6 +222,10 @@ async function runPage(data, directionResults, options = {}) {
     Worker: FakeWorker,
   });
   vm.runInContext(source, context);
+  if (navigationTarget && !options.holdNavigation) {
+    navigationURL = `https://example.test${navigationTarget}`;
+    vm.runInContext(source, context);
+  }
   await settle();
   await settle();
   return {
@@ -217,6 +238,10 @@ async function runPage(data, directionResults, options = {}) {
     eventOrder,
     historyCalls,
     location,
+    storage,
+    navigationTarget,
+    get thirdPartyNavigationURL() { return thirdPartyNavigationURL; },
+    get thirdPartyStorage() { return thirdPartyStorage; },
     get parentFetchCalls() { return parentFetchCalls; },
     get stateWorker() { return stateWorker; },
     get thirdPartyObservedHash() { return thirdPartyObservedHash; },
@@ -225,6 +250,10 @@ async function runPage(data, directionResults, options = {}) {
     get now() { return now; },
     async advance(ms) {
       now += ms;
+      timers.filter(timer => timer.active && timer.due <= now).forEach(timer => {
+        timer.active = false;
+        timer.callback();
+      });
       intervals.filter(timer => timer.active).forEach(timer => timer.callback());
       await settle();
     },
@@ -237,7 +266,7 @@ async function runPage(data, directionResults, options = {}) {
       await settle();
     },
     async runNextTimer() {
-      const timer = timers.find((candidate) => candidate.active);
+      const timer = timers.filter((candidate) => candidate.active).sort((a, b) => a.due - b.due)[0];
       assert.ok(timer, 'expected an active retry timer');
       timer.active = false;
       timer.callback();
@@ -258,6 +287,7 @@ const active = (extra = {}) => ({
   mapToken: 'map-token',
   etaAt: new Date(Date.now() + 20 * 60_000).toISOString(),
   updatedAt: new Date().toISOString(),
+  expiresAt: new Date(Date.now() + 4 * 60 * 60_000).toISOString(),
   remainingMiles: 12,
   progress: 40,
   position,
@@ -265,13 +295,16 @@ const active = (extra = {}) => ({
   ...extra,
 });
 
-test('scrubs the bearer before Worker creation and third-party MapKit execution', async () => {
+test('navigates to a clean document and consumes the bearer before Worker and MapKit execution', async () => {
   const result = await runPage(active({ routePoints: [position, destination] }), { routes: [] });
   assert.deepEqual(result.historyCalls, [{
     state: null, title: '', url: '/eta/?source=message&_eta_session=session-id',
   }]);
   assert.equal(result.location.hash, '');
   assert.equal(result.thirdPartyObservedHash, '');
+  assert.equal(result.thirdPartyNavigationURL, 'https://example.test/eta/?source=message&_eta_session=session-id');
+  assert.deepEqual(result.thirdPartyStorage, []);
+  assert.ok(result.eventOrder.indexOf('navigate') < result.eventOrder.indexOf('worker'));
   assert.ok(result.eventOrder.indexOf('history') < result.eventOrder.indexOf('worker'));
   assert.ok(result.eventOrder.indexOf('worker') < result.eventOrder.indexOf('mapkit'));
   assert.deepEqual(result.workerMessages.slice(0, 2), [
@@ -292,6 +325,110 @@ test('scrubs an invalid fragment without creating a bearer Worker', async () => 
   assert.equal(result.stateWorker, undefined);
   assert.deepEqual(result.workerMessages, []);
   assert.equal(result.elements.get('terminal').hidden, false);
+});
+
+test('the initial bearer document cannot start a Worker or MapKit before real navigation', async () => {
+  const result = await runPage(active(), { routes: [] }, { holdNavigation: true });
+  assert.equal(result.workerAttempts, 0);
+  assert.equal(result.thirdPartyNavigationURL, undefined);
+  assert.ok(result.navigationTarget);
+  assert.equal(result.storage.size, 1);
+});
+
+test('blocked storage preserves first-party route progress without any MapKit execution', async () => {
+  const result = await runPage(active({ routePoints: [position, destination] }), { routes: [] }, { storageBlocked: true });
+  assert.equal(result.navigationTarget, undefined);
+  assert.equal(result.thirdPartyObservedHash, undefined);
+  assert.equal(result.workerAttempts, 1);
+  assert.equal(result.elements.get('trip').hidden, false);
+  assert.equal(result.elements.get('route-fallback').attributes.hidden, undefined);
+});
+
+test('unconsumable storage fails closed and does not expose another stored handoff to MapKit', async () => {
+  const result = await runPage(active(), { routes: [] }, { hash: '', search: '?_eta_session=current',
+    removeBlocked: true, storage: [['ludic.eta.handoff.current', JSON.stringify({ token: 'A'.repeat(43), createdAt: Date.now() })]] });
+  assert.equal(result.workerAttempts, 0);
+  assert.equal(result.thirdPartyObservedHash, undefined);
+});
+
+test('stale, future and malformed handoffs are removed without starting a session', async () => {
+  for (const value of ['invalid-json', JSON.stringify({ token: 'A'.repeat(43), createdAt: Date.now() - 31_000 }),
+    JSON.stringify({ token: 'A'.repeat(43), createdAt: Date.now() + 60_000 }),
+    JSON.stringify({ token: 'invalid', createdAt: Date.now() })]) {
+    const result = await runPage(active(), { routes: [] }, { hash: '', search: '?_eta_session=old',
+      storage: [['ludic.eta.handoff.old', value]] });
+    assert.equal(result.workerAttempts, 0);
+    assert.equal(result.storage.size, 0);
+    assert.equal(result.thirdPartyObservedHash, undefined);
+  }
+});
+
+test('clears abandoned handoffs but preserves unrelated session storage', async () => {
+  const result = await runPage(active(), { routes: [] }, { storage: [
+    ['ludic.eta.handoff.old', 'old-private-token'], ['unrelated', 'keep'],
+  ] });
+  assert.deepEqual(result.thirdPartyStorage, [['unrelated', 'keep']]);
+});
+
+test('missing or invalid expiry cannot display private state indefinitely', async () => {
+  for (const expiresAt of [undefined, null, 'invalid', { toString: 'invalid' }]) {
+    const result = await runPage(active({ expiresAt }), { routes: [] });
+    assert.equal(result.elements.get('trip').hidden, true);
+    assert.equal(result.thirdPartyObservedHash, undefined);
+    assert.equal(result.stateWorker.terminated, true);
+  }
+});
+
+test('partial delayed updates preserve known expiry and expiry scrubs private DOM and overlays', async () => {
+  const result = await runPage(active({ driverFirstName: 'Private', destinationName: 'Private place',
+    routePoints: [position, destination], expiresAt: new Date(Date.now() + 2_000).toISOString() }), { routes: [] });
+  await result.message({ type: 'state', data: { state: 'delayed' } });
+  assert.equal(result.elements.get('trip').hidden, false);
+  await result.advance(3_000);
+  assert.equal(result.elements.get('heading').textContent, '');
+  assert.equal(result.elements.get('destination').textContent, '');
+  assert.equal(result.elements.get('route-line').attributes.d, '');
+  assert.equal(result.maps[0].items.length, 0);
+});
+
+test('malformed display fields and missing progress safely preserve valid route fallback', async () => {
+  const result = await runPage(active({ driverFirstName: { toString: 'bad' }, destinationName: { valueOf: 'bad' },
+    etaAt: { toString: 'bad' }, updatedAt: { toString: 'bad' }, progress: undefined,
+    position: null, routePoints: [position, destination] }), { routes: [] });
+  assert.equal(result.elements.get('heading').textContent, 'On the way');
+  assert.equal(result.elements.get('destination').textContent, '');
+  assert.equal(result.elements.get('progress').attributes['aria-valuenow'], '0');
+  assert.equal(result.elements.get('trip').hidden, false);
+});
+
+test('renderer cleanup errors cannot prevent private DOM erasure or terminal shutdown', async () => {
+  const result = await runPage(active({ driverFirstName: 'Private', destinationName: 'Private place',
+    routePoints: [position, destination] }), { routes: [] }, { mapCleanupThrows: true });
+  await result.message({ type: 'state', data: { state: 'ended' } });
+  assert.equal(result.elements.get('trip').hidden, true);
+  assert.equal(result.elements.get('heading').textContent, '');
+  assert.equal(result.elements.get('destination').textContent, '');
+  assert.equal(result.elements.get('route-line').attributes.d, '');
+  assert.equal(result.stateWorker.terminated, true);
+  assert.equal(result.elements.get('progress').attributes['aria-valuenow'], undefined);
+  assert.equal(result.elements.get('progress').querySelector('span').style.width, '');
+});
+
+test('expiry removes private state and shuts down the bearer worker while the page stays hidden', async () => {
+  const result = await runPage(active({ driverFirstName: 'Private', destinationName: 'Private place',
+    routePoints: [position, destination], expiresAt: new Date(Date.now() + 2_000).toISOString() }), { routes: [] });
+  await result.setHidden(true);
+  await result.advance(3_000);
+  assert.equal(result.elements.get('trip').hidden, true);
+  assert.equal(result.elements.get('heading').textContent, '');
+  assert.equal(result.elements.get('destination').textContent, '');
+  assert.equal(result.elements.get('route-line').attributes.d, '');
+  assert.equal(result.elements.get('progress').attributes['aria-valuenow'], undefined);
+  assert.equal(result.elements.get('progress').querySelector('span').style.width, '');
+  assert.equal(result.stateWorker.terminated, true);
+  const starts = result.workerMessages.filter(message => message.type === 'start').length;
+  await result.setHidden(false);
+  assert.equal(result.workerMessages.filter(message => message.type === 'start').length, starts);
 });
 
 test('explains that a scrubbed trip must be reopened after reload', async () => {
@@ -544,7 +681,7 @@ test('keeps the live endpoint map when Apple directions fails', async () => {
   assert.equal(result.elements.get('route-source').textContent, 'Route temporarily unavailable · retrying');
   assert.equal(result.elements.get('route-source').hidden, false);
   assert.equal(result.elements.get('route-fallback').attributes.hidden, '');
-  assert.equal(result.timers.filter((timer) => timer.active)[0].delay, 5_000);
+  assert.ok(result.timers.some(timer => timer.active && timer.delay === 5_000));
   assert.equal(result.warnings.length, 1);
   assert.doesNotMatch(result.warnings[0], /40\.7608|-111\.891/);
 });
