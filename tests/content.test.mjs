@@ -67,7 +67,7 @@ test('privacy distinguishes live ETA minimization from persistence and backup ex
 test('privacy discloses one-use browser handoff, interrupted retention and storage fallback', () => {
   const privacy = read('privacy/index.html');
   for (const text of ['one-use handoff in tab session storage', 'valid for 30 seconds',
-    'removed before the map loads', 'if navigation is interrupted', 'next Shared ETA open or when the tab closes',
+    'removed before the map loads', 'if navigation is interrupted', 'next Shared ETA open; otherwise retention depends on the browser’s tab-session handling',
     'token only in worker memory', 'Reloading requires reopening the original link',
     'If browser storage is unavailable']) assert.ok(privacy.includes(text), text);
 });
